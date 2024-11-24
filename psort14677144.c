@@ -33,9 +33,9 @@ void *ordenar_particao(void *arg) {
     return NULL;
 }
 
-// Função para mesclar duas partições já ordenadas
-void mesclar(void *array, size_t esquerda_qtd, size_t direita_qtd, size_t tamanho_registro, int (*cmp)(const void *, const void *)) {
-    size_t total_qtd = esquerda_qtd + direita_qtd; // Total de registros a mesclar
+// Função para juntar duas partições já ordenadas
+void merge(void *array, size_t esquerda_qtd, size_t direita_qtd, size_t tamanho_registro, int (*cmp)(const void *, const void *)) {
+    size_t total_qtd = esquerda_qtd + direita_qtd; // Total de registros que falta juntar
     char *espaco_trabalho = malloc(total_qtd * tamanho_registro); // Aloca espaço para o resultado
     if (!espaco_trabalho) err(EXIT_FAILURE, "Erro ao alocar memória para mesclagem");
 
@@ -85,7 +85,7 @@ void ordenar_em_paralelo(void *array, size_t num_registros, size_t tamanho_regis
     qsort(array, meio, tamanho_registro, cmp); // Ordena a primeira metade na thread principal
 
     pthread_join(thread, NULL); // Aguarda a conclusão da thread
-    mesclar(array, meio, num_registros - meio, tamanho_registro, cmp); // Mescla as duas partes ordenadas
+    merge(array, meio, num_registros - meio, tamanho_registro, cmp); // Mescla as duas partes ordenadas
 }
 
 int main(int argc, char *argv[]) {
