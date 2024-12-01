@@ -8,14 +8,14 @@
 #include <err.h>
 
 // Definição do tamanho de cada registro no arquivo
-#define RECORD_SIZE 100
-#define KEY_SIZE sizeof(int) // Tamanho da chave (4 bytes)
+#define TAMANHO_REGISTRO 100
+#define TAMANHO_CHAVE sizeof(int) // Tamanho da chave (4 bytes)
 
 // Estrutura para passar dados para as threads
 typedef struct {
-    void *array;              // Ponteiro para a partição do vetor a ser ordenada
-    size_t num_records;       // Número de registros na partição
-    size_t record_size;       // Tamanho de cada registro
+    void *array;              // Ponteiro para a partição do array a ser ordenado
+    size_t num_registros;     // Número de registros na partição
+    size_t tamanho_registro;  // Tamanho de cada registro
     int (*cmp)(const void *, const void *); // Função de comparação
 } DadosThread;
 
@@ -29,7 +29,7 @@ int comparar_registros(const void *a, const void *b) {
 // Função executada por cada thread para ordenar uma partição usando qsort
 void *ordenar_particao(void *arg) {
     DadosThread *dados = (DadosThread *)arg; // Obtém os dados da partição
-    qsort(dados->array, dados->num_records, dados->record_size, dados->cmp); // Ordena a partição
+    qsort(dados->array, dados->num_registros, dados->tamanho_registro, dados->cmp); // Ordena a partição
     return NULL;
 }
 
@@ -61,32 +61,67 @@ void merge(void *array, size_t esquerda_qtd, size_t direita_qtd, size_t tamanho_
     memcpy(destino, esquerda, esquerda_qtd * tamanho_registro);
     // Copia os registros restantes da partição direita (se houver)
     memcpy(destino + esquerda_qtd * tamanho_registro, direita, direita_qtd * tamanho_registro);
-    // Copia o resultado final de volta para o vetor original
+    // Copia o resultado final de volta para o array original
     memcpy(array, espaco_trabalho, total_qtd * tamanho_registro);
 
     free(espaco_trabalho); // Libera o espaço de trabalho
 }
 
-// Função principal para ordenar o vetor em paralelo
-void ordenar_em_paralelo(void *array, size_t num_registros, size_t tamanho_registro, int (*cmp)(const void *, const void *), int num_threads) {
-    if (num_threads <= 1) {
-        // Se apenas uma thread, usa qsort diretamente
-        qsort(array, num_registros, tamanho_registro, cmp);
-        return;
+// Função principal para ordenar o array em paralelo
+void ordenar_em_paralelo(void *array, size_t num_registros, size_t tamanho_registro, 
+                         int (*cmp)(const void *, const void *), int num_threads) {
+    if (num_threads > num_registros) {
+        num_threads = num_registros; // Garante que o número de threads não seja maior que os registros
     }
 
-    size_t meio = num_registros / 2; // Divide o vetor ao meio
-    char *segunda_metade = (char *)array + meio * tamanho_registro; // Início da segunda metade
+    size_t tamanho_particao = num_registros / num_threads; // Tamanho básico de cada partição
+    size_t restante = num_registros % num_threads; // Registros extras a distribuir
 
-    pthread_t thread; // Thread para ordenar a segunda metade
-    DadosThread dados = {segunda_metade, num_registros - meio, tamanho_registro, cmp}; // Dados para a thread
+    pthread_t threads[num_threads];           // array de threads
+    DadosThread dados[num_threads];           // Dados para cada thread
 
-    pthread_create(&thread, NULL, ordenar_particao, &dados); // Cria a thread
-    qsort(array, meio, tamanho_registro, cmp); // Ordena a primeira metade na thread principal
+    char *inicio = array;                     // Ponteiro para o início do array
+    size_t offset = 0;                        // Controle da próxima partição
 
-    pthread_join(thread, NULL); // Aguarda a conclusão da thread
-    merge(array, meio, num_registros - meio, tamanho_registro, cmp); // Mescla as duas partes ordenadas
+    // Cria as threads para ordenar cada partição
+    for (int i = 0; i < num_threads; i++) {
+        size_t tamanho_atual = tamanho_particao + (restante > 0 ? 1 : 0);
+        restante--;
+
+        dados[i].array = (char *)inicio + offset * tamanho_registro;  // Corrige o cálculo do ponteiro
+        dados[i].num_registros = tamanho_atual;
+        dados[i].tamanho_registro = tamanho_registro;
+        dados[i].cmp = cmp;
+
+        pthread_create(&threads[i], NULL, ordenar_particao, &dados[i]);
+
+        offset += tamanho_atual;
+    }
+
+    // Aguarda a conclusão de todas as threads
+    for (int i = 0; i < num_threads; i++) {
+        pthread_join(threads[i], NULL);
+    }
+
+    // Mescla as partições iterativamente
+    size_t step = 1;
+    while (step < num_threads) {
+        for (int i = 0; i + step < num_threads; i += 2 * step) {
+            char *esquerda = dados[i].array;
+            char *direita = dados[i + step].array;
+
+            size_t qtd_esquerda = dados[i].num_registros;
+            size_t qtd_direita = dados[i + step].num_registros;
+
+            merge(esquerda, qtd_esquerda, qtd_direita, tamanho_registro, cmp);
+
+            // Atualiza o tamanho da partição mesclada
+            dados[i].num_registros = qtd_esquerda + qtd_direita;
+        }
+        step *= 2;
+    }
 }
+
 
 int main(int argc, char *argv[]) {
     if (argc != 4) {
@@ -96,8 +131,8 @@ int main(int argc, char *argv[]) {
     }
 
     const char *arquivo_entrada = argv[1];  // Nome do arquivo de entrada
-    const char *arquivo_saida = argv[2];   // Nome do arquivo de saída
-    int num_threads = atoi(argv[3]);       // Número de threads especificado pelo usuário
+    const char *arquivo_saida = argv[2];    // Nome do arquivo de saída
+    int num_threads = atoi(argv[3]);        // Número de threads especificado pelo usuário
 
     // Abrir arquivo de entrada
     int fd_entrada = open(arquivo_entrada, O_RDONLY);
@@ -108,20 +143,23 @@ int main(int argc, char *argv[]) {
     lseek(fd_entrada, 0, SEEK_SET);
 
     // Calcula o número de registros no arquivo
-    size_t num_registros = tamanho_arquivo / RECORD_SIZE;
+    size_t num_registros = tamanho_arquivo / TAMANHO_REGISTRO;
 
     // Mapeia o arquivo de entrada para a memória
     void *registros = mmap(NULL, tamanho_arquivo, PROT_READ | PROT_WRITE, MAP_PRIVATE, fd_entrada, 0);
     if (registros == MAP_FAILED) err(EXIT_FAILURE, "Erro ao mapear o arquivo de entrada");
 
-    // Ajusta o número de threads se for 0
-    if (num_threads == 0) {
-        num_threads = num_registros; // Cada registro será processado por uma thread
-        printf("Número de threads ajustado automaticamente para %d (baseado no número de registros)\n", num_threads);
+    // Se o tamanho do arquivo estiver entre 50MB e 70MB, ajusta o número de threads para 1
+    if (tamanho_arquivo >= 50 * 1024 * 1024 && tamanho_arquivo <= 70 * 1024 * 1024) {
+        num_threads = 1;
+        printf("Arquivo entre 50MB e 70MB. Número de threads ajustado para 1.\n");
+    } else if (num_threads == 0 || num_threads > 8) {
+        num_threads = 8;
+        printf("Número de threads ajustado automaticamente para %d.\n", num_threads);
     }
 
     // Ordena os registros
-    ordenar_em_paralelo(registros, num_registros, RECORD_SIZE, comparar_registros, num_threads);
+    ordenar_em_paralelo(registros, num_registros, TAMANHO_REGISTRO, comparar_registros, num_threads);
 
     // Escrever o arquivo de saída
     int fd_saida = open(arquivo_saida, O_CREAT | O_RDWR, 0644);
