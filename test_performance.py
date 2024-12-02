@@ -11,8 +11,8 @@ REPEATS = 5  # Número de repetições por configuração
 OUTPUT_FILE = "output.dat"  # Arquivo de saída temporário
 
 # Configurações dos programas
-EXECUTABLE_WITH_THREAD = "./psort14677144"  # Com threads
-EXECUTABLE_NO_THREAD = "./psort14677144_no_thread"  # Sem threads
+EXECUTABLE_WITH_THREAD = "./ordena_threads"  # Com threads
+EXECUTABLE_NO_THREAD = "./ordena_sem_threads"  # Sem threads
 
 # Função para gerar relatório em PDF
 def generate_pdf(results):
