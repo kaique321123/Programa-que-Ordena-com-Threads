@@ -47,8 +47,9 @@ Este projeto implementa um programa em C para ordenação paralela de registros 
 4. **Gráficos de Desempenho**  
    - Estão disponíveis para diferentes tamanhos de arquivos, destacando o impacto do número de threads.
 
-![10MB Comparativo](IMAGENS_COMPARANDO_ORDENAÇÃO_COM_THREADS_E_SEM_THREADS/10mb_comparativo.png)  
-![100MB Comparativo](IMAGENS_COMPARANDO_ORDENAÇÃO_COM_THREADS_E_SEM_THREADS/100mb_comparativo.png)
+![10MBComparativo](10mb_comparativo.png)  
+![100MBComparativo](100mb_comparativo.png)
+
 
 ---
 
